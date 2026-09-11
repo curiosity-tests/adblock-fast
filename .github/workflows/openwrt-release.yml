@@ -1,6 +1,7 @@
 permissions:
   contents: write
 name: Build OpenWrt Package
+run-name: "Build OpenWrt Package ${{ inputs.leg || github.event_name }} ${{ inputs.racecar_run }}"
 
 on:
   push:
@@ -8,7 +9,24 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      leg:
+        description: "baseline (uninstrumented) or instrumented (under chalk/curiosity)"
+        type: choice
+        options: [instrumented, baseline]
+        default: baseline
+      profile:
+        description: "CrashOverride chalk profile"
+        type: string
+        default: curiosity-tests-racecar
+      racecar_run:
+        description: "racecar correlation token, echoed into the run name"
+        type: string
+        default: ""
 
+
+env:
+  CHALK_ON: ${{ inputs.leg == 'instrumented' }}
 jobs:
   test:
     name: Functional tests
@@ -179,6 +197,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Extract version and release from Makefile
+        continue-on-error: true   # racecar: scan/report/push step, must not fail the build
         id: version
         run: |
           PKG_VERSION=$(grep -E '^PKG_VERSION *:?=' Makefile | head -n1 | cut -d= -f2 | tr -d '[:space:]')
@@ -205,6 +224,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: 🧹 Prune stale release assets
+        continue-on-error: true   # racecar: scan/report/push step, must not fail the build
         # Delete assets on the tag that THIS build did not produce, so an arch or
         # release line you stopped building no longer lingers on the release (and
         # no longer gets re-published by sync_repo.sh, which pulls from releases).
@@ -226,6 +246,7 @@ jobs:
             }
           done
       - name: 🔔 Notify repo.mossdef.org
+        continue-on-error: true   # racecar: scan/report/push step, must not fail the build
         # Event-driven sync: ping the repo so it publishes this release immediately
         # instead of waiting for its hourly poll. Non-fatal if the token is absent.
         if: needs.build.result == 'success'
